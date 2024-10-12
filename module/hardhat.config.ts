@@ -96,9 +96,20 @@ const userConfig: HardhatUserConfig = {
       },
       gasPrice: 10000000000,
       chainId: 137,
-      tags: ['test', 'entrypoint', 'safe'],
+      tags: ['test', 'entrypoint', 'safe', 'polygon'],
       // allowUnlimitedContractSize: true,
     },
+    // hardhat: {
+    //   forking: {
+    //     url: "https://base-mainnet.g.alchemy.com/v2/Zs890Y4JuSC19mPxz5HAoOCuRegcBoDH",
+    //     blockNumber: 20832442,
+
+    //   },
+    //   gasPrice: 10000000000,
+    //   chainId: 8453,
+    //   tags: ['test', 'entrypoint', 'safe', 'base'],
+    //   // allowUnlimitedContractSize: true,
+    // },
     mainnet: {
       ...sharedNetworkConfig,
       url: `https://mainnet.infura.io/v3/${INFURA_KEY}`,
@@ -110,6 +121,14 @@ const userConfig: HardhatUserConfig = {
     polygon: {
       ...sharedNetworkConfig,
       url: `https://polygon-mainnet.infura.io/v3/${INFURA_KEY}`,
+    },
+    polygonfork: {
+      ...sharedNetworkConfig,
+      url: `https://rpc.buildbear.io/grumpy-siryn-28946371`,
+    },
+    base: {
+      ...sharedNetworkConfig,
+      url: `https://base-mainnet.g.alchemy.com/v2/Zs890Y4JuSC19mPxz5HAoOCuRegcBoDH`,
     },
     arbitrum: {
       ...sharedNetworkConfig,

@@ -55,7 +55,7 @@ library UniswapV3Integration {
                         tokenOut: address(tokenOut),
                         fee: fee,
                         recipient: smartAccount,
-                        deadline: block.timestamp,
+                        // deadline: block.timestamp,
                         amountIn: amountIn,
                         amountOutMinimum: 0,
                         sqrtPriceLimitX96: sqrtPriceLimitX96

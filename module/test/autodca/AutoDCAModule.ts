@@ -1,16 +1,20 @@
 import { expect } from 'chai'
-import { deployments, ethers } from 'hardhat'
-import { impersonateAccount } from "@nomicfoundation/hardhat-network-helpers"
+import { deployments, ethers, network } from 'hardhat'
+import { impersonateAccount, setBalance } from "@nomicfoundation/hardhat-network-helpers"
 import { getTestSafe, getEntryPoint, getTestToken, getSafe7579, getAutoDCAExecutor, getSessionValidator, getTestVault } from '../utils/setup'
 import { logGas } from '../../src/utils/execution'
 import {
   buildUnsignedUserOpTransaction,
 } from '../../src/utils/userOp'
 import execSafeTransaction from '../utils/execSafeTransaction';
-import { ZeroAddress } from 'ethers';
+import { parseEther, ZeroAddress } from 'ethers';
 import { encodeAbiParameters, encodePacked, Hex, pad } from 'viem'
 
+
+
 describe('Spendlimit session key - Basic tests', () => {
+
+  
   const setupTests = deployments.createFixture(async ({ deployments }) => {
     await deployments.fixture()
 
@@ -19,6 +23,8 @@ describe('Spendlimit session key - Basic tests', () => {
     await impersonateAccount("0x958543756A4c7AC6fB361f0efBfeCD98E4D297Db");
 
     const mockAccount = await ethers.getImpersonatedSigner("0x958543756A4c7AC6fB361f0efBfeCD98E4D297Db");
+    await setBalance(await mockAccount.getAddress(), parseEther('1'))
+    
 
 
     let entryPoint = await getEntryPoint()
@@ -28,17 +34,33 @@ describe('Spendlimit session key - Basic tests', () => {
        
     const sessionValidator =  await getSessionValidator()
     const safe7579 = await getSafe7579()
-    const testToken = await getTestToken("0x3c499c542cEF5E3811e1192ce70d8cC03d5c3359") // USDC
-    const testToken2 = await getTestToken("0x0d500B1d8E8eF31E21C99d1Db9A6444d3ADf1270") // WMATIC
-    const testVault = await getTestVault("0x28F53bA70E5c8ce8D03b1FaD41E9dF11Bb646c36"); // WMATCI Vault
+
+    let testTokens: (string | undefined)[] = []
+    let testVaultAddress = ZeroAddress //WMATCI Vault
+
+    if (network.tags.base) {
+      // USDC and cbBTC
+      testTokens = ["0x833589fcd6edb6e08f4c7c32d4f71b54bda02913", "0xcbb7c0000ab88b473b1f5afd9ef808440eed33bf"]
+      testVaultAddress = ZeroAddress //WMATCI Vault
+
+    }
+    else if  (network.tags.polygon) {
+      // USDC and WMATIC
+      testTokens = ["0x3c499c542cEF5E3811e1192ce70d8cC03d5c3359", "0x0d500B1d8E8eF31E21C99d1Db9A6444d3ADf1270"]
+      testVaultAddress = "0x28F53bA70E5c8ce8D03b1FaD41E9dF11Bb646c36" //WMATIC Vault
+
+    }
+    const testToken = await getTestToken(testTokens[0])
+    const testToken2 = await getTestToken(testTokens[1])
+
 
 
     const safe = await getTestSafe(user1, await safe7579.getAddress(), await safe7579.getAddress())
 
     return {
       testToken,
+      testVaultAddress,
       testToken2,
-      testVault,
       user1,
       user2,  
       safe,
@@ -53,11 +75,13 @@ describe('Spendlimit session key - Basic tests', () => {
 
 
     it('should add a validator and execute DCA job', async () => {
-      const { testVault, testToken, testToken2, user1, relayer, safe, autoDCAExecutor, sessionValidator, safe7579, entryPoint, mockAccount } = await setupTests()
+      const {  testToken, testVaultAddress, testToken2, user1, relayer, safe, autoDCAExecutor, sessionValidator, safe7579, entryPoint, mockAccount } = await setupTests()
 
       await entryPoint.depositTo(await safe.getAddress(), { value: ethers.parseEther('1.0') })
 
       const mockLimit = await testToken.balanceOf(await mockAccount.getAddress())
+
+      const testVault = await getTestVault(testVaultAddress); 
    
       await  testToken.connect(mockAccount).transfer(await safe.getAddress(), mockLimit)
 
@@ -91,7 +115,7 @@ describe('Spendlimit session key - Basic tests', () => {
         [user1.address as Hex, sessionKeyData]
       );
 
-      const jobData = { token: await testToken.getAddress() as Hex, targetToken: await testToken2.getAddress() as Hex,  vault: await testVault.getAddress() as Hex, limitAmount: mockLimit, limitUsed: 0n, validAfter: 0, validUntil: currentTime + 100, lastUsed: 0, refreshInterval: 0 }
+      const jobData = { token: await testToken.getAddress() as Hex, targetToken: await testToken2.getAddress() as Hex,  vault: testVaultAddress as Hex, limitAmount: mockLimit, limitUsed: 0n, validAfter: 0, validUntil: currentTime + 100, lastUsed: 0, refreshInterval: 0 }
 
   
       const encodedDCAInitData = encodeAbiParameters(
@@ -118,8 +142,8 @@ describe('Spendlimit session key - Basic tests', () => {
 
       await execSafeTransaction(safe, {to: await safe.getAddress(), data:  ((await safe7579.installModule.populateTransaction(1, await sessionValidator.getAddress(), encodedSessionInitData)).data as string), value: 0})
       await execSafeTransaction(safe, {to: await safe.getAddress(), data:  ((await safe7579.installModule.populateTransaction(2, await autoDCAExecutor.getAddress(), encodedDCAInitData)).data as string), value: 0})
-      // await execSafeTransaction(safe, await autoDCAExecutor.createJob.populateTransaction(jobData))
-      // await execSafeTransaction(safe, await sessionValidator.enableSessionKey.populateTransaction(user1.address, sessionKeyData))
+      await execSafeTransaction(safe, await autoDCAExecutor.createJob.populateTransaction(jobData))
+      await execSafeTransaction(safe, await sessionValidator.enableSessionKey.populateTransaction(user1.address, sessionKeyData))
 
       
 
@@ -134,13 +158,17 @@ describe('Spendlimit session key - Basic tests', () => {
 
       const typedDataHash = ethers.getBytes(await entryPoint.getUserOpHash(userOp))
       userOp.signature = await user1.signMessage(typedDataHash)
-      
+
+
       await logGas('Execute UserOp without a prefund payment', entryPoint.handleOps([userOp], relayer))
 
       expect(await testToken.balanceOf(await safe.getAddress())).to.be.eq(ethers.parseEther('0'))
+
+      if (network.tags.polygon) {
+
       expect(await testVault.balanceOf(await safe.getAddress())).to.be.not.eq(ethers.parseEther('0'))
 
-
+      }
 
     })
 

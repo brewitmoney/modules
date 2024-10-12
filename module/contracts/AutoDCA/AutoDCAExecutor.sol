@@ -102,6 +102,7 @@ contract AutoDCAExecutor is ERC7579ExecutorBase {
 
 
         // approve and deposit to vault
+        if(address(jobData.vault) != address(0)) {
         Execution[] memory approveAndDeposit = new Execution[](3);
         (approveAndDeposit[0], approveAndDeposit[1]) =
             ERC20Integration.safeApprove(IERC20(jobData.targetToken), jobData.vault, amountIn);
@@ -109,6 +110,7 @@ contract AutoDCAExecutor is ERC7579ExecutorBase {
 
         // execute deposit to vault on account
         _execute(approveAndDeposit);
+        }
 
         }
 
